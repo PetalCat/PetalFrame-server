@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+httptools
+uvloop
+python-jose
+passlib
+bcrypt
