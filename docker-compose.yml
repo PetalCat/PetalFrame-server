@@ -6,10 +6,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: petalframe
-    working_dir: /app
-    volumes:
-      - ./uploads:/app/uploads
-      - ./config.json:/app/config.json
     ports:
       - "41873:8000"
     restart: unless-stopped
