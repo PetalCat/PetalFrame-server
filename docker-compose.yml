@@ -2,14 +2,12 @@ version: "3.8"
 
 services:
   petalframe:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: petalframe
     working_dir: /app
-    command: >
-      sh -c "pip install --no-cache-dir -r require.txt &&
-             uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
-      - ./server.py:/app/server.py
       - ./uploads:/app/uploads
       - ./config.json:/app/config.json
     ports:
