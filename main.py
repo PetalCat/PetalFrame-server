@@ -8,6 +8,10 @@ from modules.uploads import router as uploads_router
 from modules.rooms import router as rooms_router
 from modules.admin import router as admin_router
 from modules.config import UPLOAD_DIR
+from modules.database import init_db
+
+init_db()
+
 
 app = FastAPI()
 

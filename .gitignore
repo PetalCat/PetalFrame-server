@@ -1,6 +1,7 @@
-echo "uploads/
+uploads/
 app.db
 config.json
 __pycache__/
 " > .gitignore
 .DS_Store
+/user_rooms

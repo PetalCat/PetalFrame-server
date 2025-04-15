@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordBearer
 import os
-from modules.utils import sanitize_html
-from modules.utils import format_html
+from modules.utils import sanitize_html, format_html
 from modules.database import resolve_username_caseless, user_exists
 from modules.auth import decode_token
 from modules.config import ROOMS_DIR
@@ -29,19 +28,12 @@ def get_user_room(username: str, requester: str = Depends(get_current_user)):
 	path = get_room_path(resolved)
 
 	if not os.path.exists(path) and resolved.lower() == requester.lower():
-		default_html = f"""
-		<div class="pf-room" style="text-align: center; padding: 2rem">
-  <pf-avatar></pf-avatar>
-  <h1><pf-name></pf-name></h1>
-  <p><pf-bio></pf-bio></p>
-  <pf-banner></pf-banner>
-  <pf-feed></pf-feed>
-  <p style="opacity: 0.5; font-size: 0.9rem">
-    This is your default profile. Customize it by editing your room.
-  </p>
-</div>
-
-		"""
+		template_path = os.path.join("./templates", "default_room.html")
+		if os.path.exists(template_path):
+			with open(template_path, "r", encoding="utf-8") as tpl:
+				default_html = tpl.read().replace("{{username}}", resolved)
+		else:
+			default_html = "<p>Template missing</p>"
 		with open(path, "w", encoding="utf-8") as f:
 			f.write(default_html.strip())
 
