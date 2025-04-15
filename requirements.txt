@@ -1,8 +1,10 @@
 fastapi
 uvicorn
 httptools
-uvloop
-python-jose
-passlib
-bcrypt
 python-multipart
+passlib
+uvloop
+bcrypt
+python-jose
+bleach
+beautifulsoup4
