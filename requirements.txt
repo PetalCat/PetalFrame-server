@@ -8,3 +8,4 @@ bcrypt
 python-jose
 bleach
 beautifulsoup4
+tinycss2
