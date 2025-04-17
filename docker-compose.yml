@@ -10,6 +10,7 @@ services:
       - "41873:8000"
     restart: unless-stopped
     volumes:
-      - ./uploads:/app/uploads
-      - ./user_rooms:/app/user_rooms
-      - ./app.db:/app/app.db
+      - petal_data:/app/data
+
+volumes:
+  petal_data:

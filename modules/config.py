@@ -3,10 +3,13 @@ import json
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
-UPLOAD_DIR = os.path.join(ROOT_DIR, "uploads")
-AVATAR_DIR = os.path.join(ROOT_DIR, "avatars")
-ROOMS_DIR = os.path.join(ROOT_DIR, "user_rooms")
-DB_PATH = os.path.join(ROOT_DIR, "app.db")
+BASE_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
+
+UPLOAD_DIR = os.path.join(BASE_DATA_DIR, "uploads")
+AVATAR_DIR = os.path.join(BASE_DATA_DIR, "avatars")  # if you use one
+ROOMS_DIR = os.path.join(BASE_DATA_DIR, "user_rooms")
+DB_PATH = os.path.join(BASE_DATA_DIR, "app.db")
+
 CONFIG_PATH = os.path.join(ROOT_DIR, "config.json")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_SECONDS = 36000
