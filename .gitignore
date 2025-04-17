@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 /user_rooms
 /avatars
+/data
