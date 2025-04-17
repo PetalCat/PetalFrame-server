@@ -29,10 +29,37 @@ def convert_to_mp4(input_path: str, output_path: str):
 		output_path
 	], check=True)
 
+def backfill_missing_previews():
+	for filename in os.listdir(UPLOAD_DIR):
+		if filename.startswith("preview_"):
+			continue  # Already has preview
+
+		full_path = os.path.join(UPLOAD_DIR, filename)
+		if not os.path.isfile(full_path):
+			continue
+
+		preview_name = f"preview_{filename}"
+		preview_path = os.path.join(UPLOAD_DIR, preview_name)
+
+		if os.path.exists(preview_path):
+			continue  # Already generated
+
+		ext = os.path.splitext(filename)[-1].lower()
+		is_video = ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]
+		try:
+			generate_preview(full_path, preview_path, is_video)
+			print(f"[Backfill] Generated preview for {filename}")
+		except Exception as e:
+			print(f"[Backfill] Failed preview for {filename}: {e}")
+
+
 def convert_and_track(username: str, tmp_path: str, final_name: str, caption: str):
 	output_path = os.path.join(UPLOAD_DIR, final_name)
+	preview_name = f"preview_{final_name}"
+	preview_path = os.path.join(UPLOAD_DIR, preview_name)
 	try:
 		convert_to_mp4(tmp_path, output_path)
+		generate_preview(output_path, preview_path, is_video=True)
 		track_upload(username, final_name, caption)
 	except Exception as e:
 		print(f"[FFMPEG ERROR] {final_name}: {e}")
@@ -67,8 +94,11 @@ async def upload_media(
 		if is_convert:
 			background_tasks.add_task(convert_and_track, username, tmp_path, final_name, caption.strip())
 		else:
-			shutil.move(tmp_path, final_path)
-			track_upload(username, final_name, caption.strip())
+			is_video = content_type.startswith("video/")
+			preview_name = f"preview_{final_name}"
+			preview_path = os.path.join(UPLOAD_DIR, preview_name)
+			generate_preview(final_path, preview_path, is_video)
+
 
 		uploaded += 1
 
@@ -117,6 +147,27 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 	if not username or not user_exists(username):
 		raise HTTPException(status_code=401, detail="Invalid token")
 	return username
+	
+def generate_preview(input_path: str, output_path: str, is_video: bool):
+	if is_video:
+		# Extract a frame at 0.5s as a static image preview (JPEG)
+		if not output_path.lower().endswith(".jpg"):
+			output_path = os.path.splitext(output_path)[0] + ".jpg"
+		subprocess.run([
+			"ffmpeg", "-y",
+			"-ss", "00:00:00.5",
+			"-i", input_path,
+			"-vframes", "1",
+			"-vf", "scale=320:-1",
+			output_path
+		], check=True)
+	else:
+		# For images, generate scaled down preview as usual
+		subprocess.run([
+			"ffmpeg", "-y", "-i", input_path,
+			"-vf", "scale=320:-1",
+			output_path
+		], check=True)
 
 @router.get("/gallery")
 def gallery_data(_: str = Depends(get_current_user)):

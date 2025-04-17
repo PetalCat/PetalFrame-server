@@ -20,13 +20,17 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 	return username
 
 @router.get("/me")
-def get_me(username: str = Depends(get_current_user)):
+def get_me(token: str = Depends(oauth2_scheme)):
+	username = decode_token(token)
 	user = get_user(username)
+	if not user:
+		raise HTTPException(status_code=401, detail="Invalid token")
 	return {
-		"username": username,
-		"is_admin": user["is_admin"],
-		"avatar": user["avatar"]
+		"username": user["username"],
+		"avatar": user["avatar"],
+		"is_admin": user["is_admin"],  # ✅ include this
 	}
+
 
 @router.post("/me/avatar")
 async def upload_avatar(username: str = Depends(get_current_user), file: UploadFile = File(...)):
