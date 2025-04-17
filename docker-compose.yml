@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
   petalframe:
+    image: petalframe:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,3 +10,12 @@ services:
     ports:
       - "41873:8000"
     restart: unless-stopped
+    volumes:
+      - petalframe_uploads:/app/uploads
+      - petalframe_rooms:/app/user_rooms
+      - petalframe_db:/app/app.db
+
+volumes:
+  petalframe_uploads:
+  petalframe_rooms:
+  petalframe_db:
