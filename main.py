@@ -8,19 +8,19 @@ from modules.uploads import router as uploads_router
 from modules.rooms import router as rooms_router
 from modules.admin import router as admin_router
 from modules.config import UPLOAD_DIR
-from modules.database import init_db
-
-init_db()
-
+from modules.database import init_db  # Import the init_db function
 
 app = FastAPI()
 
+# Initialize the database
+init_db()
+
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=["*"],
-	allow_credentials=True,
-	allow_methods=["*"],
-	allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Serve uploaded files (videos)
@@ -34,5 +34,5 @@ app.include_router(rooms_router)
 app.include_router(admin_router)
 
 if __name__ == "__main__":
-	import uvicorn
-	uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -7,6 +7,8 @@ from modules.database import resolve_username_caseless, user_exists
 from modules.auth import decode_token
 from modules.config import ROOMS_DIR
 
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
+
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -28,14 +30,12 @@ def get_user_room(username: str, requester: str = Depends(get_current_user)):
 	path = get_room_path(resolved)
 
 	if not os.path.exists(path) and resolved.lower() == requester.lower():
-		template_path = os.path.join("./templates", "default_room.html")
-		if os.path.exists(template_path):
-			with open(template_path, "r", encoding="utf-8") as tpl:
-				default_html = tpl.read().replace("{{username}}", resolved)
-		else:
-			default_html = "<p>Template missing</p>"
-		with open(path, "w", encoding="utf-8") as f:
-			f.write(default_html.strip())
+		default_path = os.path.join(TEMPLATES_DIR, "default_profile.html")
+		if os.path.exists(default_path):
+			with open(default_path, "r", encoding="utf-8") as f:
+				default_html = f.read()
+			with open(path, "w", encoding="utf-8") as f:
+				f.write(default_html.strip())
 
 	if not os.path.exists(path):
 		return HTMLResponse(content="<p>This user has no profile page yet.</p>", status_code=404)
