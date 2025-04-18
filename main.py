@@ -18,8 +18,16 @@ init_db()
 
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=["*"],
+	allow_origins=[
+	"https://localhost",             # ✅ Capacitor app
+	"http://localhost:8000",         # Dev browser
+	"http://localhost:5173",         # Vite
+	"https://petalcat.dev",          # Live site
+	"https://base.petalcat.dev",     # API subdomain
+	"https://*.petalcat.dev",        # Optional wildcard (note: doesn't always work)
+	],
 	allow_credentials=True,
+
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
