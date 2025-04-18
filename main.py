@@ -15,13 +15,20 @@ app = FastAPI()
 # Initialize the database
 init_db()
 
+
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+	CORSMiddleware,
+	allow_origins=[
+		"https://localhost",     # For local testing in Capacitor
+		"http://localhost:8000", # Optional for dev tools
+		"https://petalcat.dev",  # Production frontend
+		"https://*.petalcat.dev" # Subdomains like base.petalcat.dev
+	],
+	allow_credentials=True,
+	allow_methods=["*"],
+	allow_headers=["*"],
 )
+
 
 # Serve uploaded files (videos)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
