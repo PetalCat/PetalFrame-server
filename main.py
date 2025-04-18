@@ -18,16 +18,12 @@ init_db()
 
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=[
-		"https://localhost",     # For local testing in Capacitor
-		"http://localhost:8000", # Optional for dev tools
-		"https://petalcat.dev",  # Production frontend
-		"https://*.petalcat.dev" # Subdomains like base.petalcat.dev
-	],
+	allow_origins=["*"],
 	allow_credentials=True,
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+
 
 
 # Serve uploaded files (videos)
