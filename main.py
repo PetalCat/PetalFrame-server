@@ -15,22 +15,22 @@ app = FastAPI()
 # Initialize the database
 init_db()
 
-
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=[
-	"https://localhost",             # ✅ Capacitor app
-	"http://localhost:8000",         # Dev browser
-	"http://localhost:5173",         # Vite
-	"https://petalcat.dev",          # Live site
-	"https://base.petalcat.dev",     # API subdomain
-	"https://*.petalcat.dev",        # Optional wildcard (note: doesn't always work)
+		"https://localhost",                 # ✅ REQUIRED for Capacitor apps
+		"http://localhost:8000",
+		"http://localhost:5173",
+		"https://petalcat.dev",
+        "https://frame.petalcat.dev",
+		"https://base.petalcat.dev",
+		"https://*.petalcat.dev",
 	],
 	allow_credentials=True,
-
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+
 
 
 
