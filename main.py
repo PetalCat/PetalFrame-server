@@ -18,7 +18,10 @@ init_db()
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=[
-		"https://localhost",                 # ✅ REQUIRED for Capacitor apps
+		"https://localhost",
+        "http://localhost",
+        "https://localhost/",
+        "http://localhost/",
 		"http://localhost:8000",
 		"http://localhost:5173",
 		"https://petalcat.dev",
