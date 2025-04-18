@@ -95,9 +95,13 @@ async def upload_media(
 			background_tasks.add_task(convert_and_track, username, tmp_path, final_name, caption.strip())
 		else:
 			is_video = content_type.startswith("video/")
+			final_path = os.path.join(UPLOAD_DIR, final_name)
+			shutil.move(tmp_path, final_path)  # ← move to actual path
+
 			preview_name = f"preview_{final_name}"
 			preview_path = os.path.join(UPLOAD_DIR, preview_name)
 			generate_preview(final_path, preview_path, is_video)
+			track_upload(username, final_name, caption.strip())
 
 
 		uploaded += 1
@@ -147,10 +151,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 	if not username or not user_exists(username):
 		raise HTTPException(status_code=401, detail="Invalid token")
 	return username
-	
+
+
 def generate_preview(input_path: str, output_path: str, is_video: bool):
 	if is_video:
-		# Extract a frame at 0.5s as a static image preview (JPEG)
 		if not output_path.lower().endswith(".jpg"):
 			output_path = os.path.splitext(output_path)[0] + ".jpg"
 		subprocess.run([
@@ -159,15 +163,19 @@ def generate_preview(input_path: str, output_path: str, is_video: bool):
 			"-i", input_path,
 			"-vframes", "1",
 			"-vf", "scale=320:-1",
+			"-update", "1",  # 💡 Tells FFmpeg it's one frame, update in-place
 			output_path
 		], check=True)
 	else:
-		# For images, generate scaled down preview as usual
 		subprocess.run([
-			"ffmpeg", "-y", "-i", input_path,
+			"ffmpeg", "-y",
+			"-i", input_path,
 			"-vf", "scale=320:-1",
+			"-frames:v", "1",  # 👈 Ensures it's a single frame
+			"-update", "1",    # 👈 Fixes image sequence warning
 			output_path
 		], check=True)
+
 
 @router.get("/gallery")
 def gallery_data(_: str = Depends(get_current_user)):
