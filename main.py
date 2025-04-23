@@ -7,13 +7,15 @@ from modules.users import router as users_router
 from modules.uploads import router as uploads_router
 from modules.rooms import router as rooms_router
 from modules.admin import router as admin_router
+from modules.edit import router as edit_router
 from modules.config import UPLOAD_DIR
-from modules.database import init_db  # Import the init_db function
+from modules.database import init_db, add_date_taken_column  # ✅ import
 
 app = FastAPI()
 
 # Initialize the database
 init_db()
+add_date_taken_column() 
 
 app.add_middleware(
 	CORSMiddleware,
@@ -46,6 +48,8 @@ app.include_router(users_router)
 app.include_router(uploads_router)
 app.include_router(rooms_router)
 app.include_router(admin_router)
+app.include_router(edit_router)
+
 
 if __name__ == "__main__":
     import uvicorn

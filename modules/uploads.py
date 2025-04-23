@@ -5,14 +5,78 @@ import os, shutil, subprocess, tempfile, sqlite3
 from uuid import uuid4
 
 from modules.config import UPLOAD_DIR, DB_PATH
-from modules.database import track_upload, list_user_uploads, user_exists
+from modules.database import track_upload, list_user_uploads, user_exists, add_date_taken_column
 from modules.auth import decode_token
 from datetime import datetime
 from collections import defaultdict
-
+import re
+from PIL import Image
+from PIL.ExifTags import TAGS
+import subprocess
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+
+def extract_date_taken_image(path: str) -> int | None:
+	try:
+		image = Image.open(path)
+		exif = image._getexif()
+		if not exif:
+			return None
+		for tag, value in exif.items():
+			tag_name = TAGS.get(tag)
+			if tag_name == "DateTimeOriginal":
+				return int(datetime.strptime(value, "%Y:%m:%d %H:%M:%S").timestamp())
+	except Exception as e:
+		print(f"[EXIF ERROR] {path}: {e}")
+	return None
+
+def extract_date_taken_video(path: str) -> int | None:
+	try:
+		result = subprocess.run(
+			[
+				"ffprobe",
+				"-v", "quiet",
+				"-print_format", "json",
+				"-show_entries", "format_tags=creation_time",
+				"-i", path,
+			],
+			capture_output=True,
+			text=True
+		)
+		import json
+		tags = json.loads(result.stdout).get("format", {}).get("tags", {})
+		if "creation_time" in tags:
+			return int(datetime.strptime(tags["creation_time"], "%Y-%m-%dT%H:%M:%S.%fZ").timestamp())
+	except Exception as e:
+		print(f"[FFPROBE ERROR] {path}: {e}")
+	return None
+
+
+def parse_date_from_filename(filename: str) -> int | None:
+	name = os.path.splitext(os.path.basename(filename))[0]
+
+	# Google Photos: 20250104_161138 or 20250104-161138
+	match = re.match(r"^(\d{8})[-_](\d{6})", name)
+	if match:
+		try:
+			return int(datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S").timestamp())
+		except ValueError:
+			return None
+
+	# iCloud format: 2024-02-14 13.23.15
+	match = re.match(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2})", name)
+	if match:
+		try:
+			return int(datetime.strptime("".join(match.groups()), "%Y%m%d%H%M%S").timestamp())
+		except ValueError:
+			return None
+
+	return None
+
+
+
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
 	username = decode_token(token)
@@ -182,30 +246,71 @@ def gallery_data(_: str = Depends(get_current_user)):
 	conn = sqlite3.connect(DB_PATH)
 	c = conn.cursor()
 	c.execute("""
-		SELECT videos.username, videos.filename, videos.caption, videos.timestamp, users.avatar
+		SELECT videos.username, videos.filename, videos.caption, videos.timestamp, videos.date_taken, users.avatar
 		FROM videos
 		JOIN users ON videos.username = users.username
-		ORDER BY videos.timestamp DESC
 	""")
 	rows = c.fetchall()
 	conn.close()
 
-	print("[Gallery Debug] Raw rows:", rows)
-
 	grouped = defaultdict(list)
 	for row in rows:
 		try:
-			dt = datetime.fromtimestamp(row[3])  # ✅ Fix: fromtimestamp not fromisoformat
+			taken = row[4] or row[3]
+			dt = datetime.fromtimestamp(taken)
 			month_label = dt.strftime("%B %Y")
 			grouped[month_label].append({
 				"username": row[0],
 				"filename": row[1],
 				"caption": row[2],
 				"timestamp": row[3],
-				"avatar": row[4],
+				"date_taken": row[4],
+				"avatar": row[5],
 			})
 		except Exception as e:
-			print("[Gallery Debug] Invalid timestamp row:", row, e)
+			print("[Gallery Debug] Skipped invalid:", row, e)
 
-	print("[Gallery Debug] Grouped:", dict(grouped))
+	# Sort inside each group
+	for month in grouped:
+		grouped[month].sort(key=lambda x: x["date_taken"] or x["timestamp"], reverse=True)
+
 	return grouped
+
+
+def backfill_date_taken():
+	from modules.database import add_date_taken_column
+	add_date_taken_column()
+
+	conn = sqlite3.connect(DB_PATH)
+	c = conn.cursor()
+	c.execute("SELECT id, filename FROM videos WHERE date_taken IS NULL")
+	rows = c.fetchall()
+
+	for video_id, filename in rows:
+		path = os.path.join(UPLOAD_DIR, filename)
+		if not os.path.exists(path):
+			continue
+
+		ext = os.path.splitext(filename)[-1].lower()
+		taken = None
+
+		# Try EXIF or ffprobe
+		if ext in [".jpg", ".jpeg", ".png", ".webp", ".heic"]:
+			taken = extract_date_taken_image(path)
+		elif ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]:
+			taken = extract_date_taken_video(path)
+
+		# Fallback to filename pattern
+		if not taken:
+			taken = parse_date_from_filename(filename)
+			if taken:
+				print(f"[Backfill] {filename}: Parsed from filename → {taken}")
+			else:
+				print(f"[Backfill] {filename}: No date found")
+
+		# Save if valid
+		if taken:
+			c.execute("UPDATE videos SET date_taken=? WHERE id=?", (taken, video_id))
+
+	conn.commit()
+	conn.close()

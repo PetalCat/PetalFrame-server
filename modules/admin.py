@@ -5,8 +5,7 @@ from modules.database import (
 )
 from modules.config import get_config, save_config
 from modules.auth import decode_token, get_user
-from modules.uploads import backfill_missing_previews  # make sure this is defined in a shared place
-
+from modules.uploads import backfill_missing_previews, backfill_date_taken  # ✅ new
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -22,6 +21,11 @@ def require_admin(token: str = Depends(oauth2_scheme)):
 def run_preview_backfill(_: str = Depends(require_admin)):
 	backfill_missing_previews()
 	return {"status": "Backfill complete"}
+
+@router.post("/admin/backfill_dates")  # ✅ new route
+def run_date_backfill(_: str = Depends(require_admin)):
+	backfill_date_taken()
+	return {"status": "Date taken backfill complete"}
 
 @router.get("/admin/signup_status")
 def get_signup_status(_: str = Depends(require_admin)):

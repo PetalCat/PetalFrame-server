@@ -20,9 +20,21 @@ def init_db():
 			username TEXT NOT NULL,
 			filename TEXT NOT NULL,
 			caption TEXT,
-			timestamp INTEGER
+			timestamp INTEGER,
+			date_taken INTEGER
 		)
 	""")
+	conn.commit()
+	conn.close()
+
+def add_date_taken_column():
+	conn = sqlite3.connect(DB_PATH)
+	c = conn.cursor()
+	try:
+		c.execute("ALTER TABLE videos ADD COLUMN date_taken INTEGER")
+	except sqlite3.OperationalError as e:
+		if "duplicate column" not in str(e).lower():
+			raise
 	conn.commit()
 	conn.close()
 
@@ -101,18 +113,35 @@ def user_count():
 	conn.close()
 	return count
 
-def track_upload(username, filename, caption):
+def track_upload(username, filename, caption, date_taken=None):
 	conn = sqlite3.connect(DB_PATH)
 	c = conn.cursor()
-	c.execute("INSERT INTO videos (id, username, filename, caption, timestamp) VALUES (?, ?, ?, ?, ?)",
-		(str(uuid4()), username, filename, caption, int(time.time())))
+	c.execute("""
+		INSERT INTO videos (id, username, filename, caption, timestamp, date_taken)
+		VALUES (?, ?, ?, ?, ?, ?)
+	""", (
+		str(uuid4()),
+		username,
+		filename,
+		caption,
+		int(time.time()),
+		int(date_taken) if date_taken else None
+	))
 	conn.commit()
 	conn.close()
 
 def list_user_uploads(username):
 	conn = sqlite3.connect(DB_PATH)
 	c = conn.cursor()
-	c.execute("SELECT filename, caption, timestamp FROM videos WHERE username=?", (username,))
+	c.execute("SELECT filename, caption, timestamp, date_taken FROM videos WHERE username=?", (username,))
 	rows = c.fetchall()
 	conn.close()
-	return [{"filename": r[0], "caption": r[1], "timestamp": r[2]} for r in rows]
+	return [
+		{
+			"filename": r[0],
+			"caption": r[1],
+			"timestamp": r[2],
+			"date_taken": r[3],
+		}
+		for r in rows
+	]
