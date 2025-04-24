@@ -9,3 +9,4 @@ python-jose
 bleach
 beautifulsoup4
 tinycss2
+pillow
