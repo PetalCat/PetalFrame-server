@@ -13,6 +13,7 @@ import re
 from PIL import Image
 from PIL.ExifTags import TAGS
 import subprocess
+from fastapi import Query
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -176,8 +177,13 @@ async def upload_media(
 def my_uploads(username: str = Depends(get_current_user)):
 	return list_user_uploads(username)
 
+
 @router.get("/feed")
-def get_feed(_: str = Depends(get_current_user)):
+def get_feed(
+	username: str = Depends(get_current_user),
+	limit: int = Query(20, ge=1, le=100),
+	offset: int = Query(0, ge=0)
+):
 	conn = sqlite3.connect(DB_PATH)
 	c = conn.cursor()
 	c.execute("""
@@ -185,20 +191,22 @@ def get_feed(_: str = Depends(get_current_user)):
 		FROM videos
 		JOIN users ON videos.username = users.username
 		ORDER BY videos.timestamp DESC
-	""")
-	feed = [
+		LIMIT ? OFFSET ?
+	""", (limit, offset))
+	rows = c.fetchall()
+	conn.close()
+
+	return [
 		{
 			"username": row[0],
 			"filename": row[1],
+			"preview_filename": f"preview_{row[1]}",
 			"caption": row[2],
 			"timestamp": row[3],
 			"avatar": row[4],
 		}
-		for row in c.fetchall()
+		for row in rows
 	]
-	conn.close()
-	return feed
-
 from fastapi import Depends
 from datetime import datetime
 import sqlite3
