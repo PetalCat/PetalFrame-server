@@ -10,6 +10,7 @@ from modules.admin import router as admin_router
 from modules.edit import router as edit_router
 from modules.config import UPLOAD_DIR
 from modules.database import init_db, add_date_taken_column  # ✅ import
+from modules.albums import router as albums_router
 
 app = FastAPI()
 
@@ -49,6 +50,7 @@ app.include_router(uploads_router)
 app.include_router(rooms_router)
 app.include_router(admin_router)
 app.include_router(edit_router)
+app.include_router(albums_router)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,8 @@ from modules.config import DB_PATH
 def init_db():
 	conn = sqlite3.connect(DB_PATH)
 	c = conn.cursor()
+
+	# Users table
 	c.execute("""
 		CREATE TABLE IF NOT EXISTS users (
 			username TEXT PRIMARY KEY,
@@ -14,6 +16,8 @@ def init_db():
 			avatar TEXT
 		)
 	""")
+
+	# Videos table
 	c.execute("""
 		CREATE TABLE IF NOT EXISTS videos (
 			id TEXT PRIMARY KEY,
@@ -24,8 +28,32 @@ def init_db():
 			date_taken INTEGER
 		)
 	""")
+
+	# 🔥 NEW: Albums table
+	c.execute("""
+		CREATE TABLE IF NOT EXISTS albums (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT,
+			cover_filename TEXT,
+			creator_username TEXT NOT NULL
+		)
+	""")
+
+	# 🔥 NEW: Album Items linking table
+	c.execute("""
+		CREATE TABLE IF NOT EXISTS album_items (
+			album_id TEXT,
+			filename TEXT,
+			PRIMARY KEY (album_id, filename),
+			FOREIGN KEY (album_id) REFERENCES albums(id),
+			FOREIGN KEY (filename) REFERENCES videos(filename)
+		)
+	""")
+
 	conn.commit()
 	conn.close()
+
 
 def add_date_taken_column():
 	conn = sqlite3.connect(DB_PATH)
