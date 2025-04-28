@@ -131,6 +131,24 @@ def convert_and_track(username: str, tmp_path: str, final_name: str, caption: st
 	finally:
 		os.unlink(tmp_path)
 
+@router.post("/media/edit_dates")
+def edit_dates(
+	filenames: List[str] = Form(...),
+	timestamp: int = Form(...),
+	username: str = Depends(get_current_user)
+):
+	conn = sqlite3.connect(DB_PATH)
+	c = conn.cursor()
+	for filename in filenames:
+		c.execute(
+			"UPDATE videos SET date_taken = ? WHERE filename = ?",
+			(timestamp, filename)
+		)
+	conn.commit()
+	conn.close()
+
+	return {"status": "ok"}
+
 @router.post("/upload")
 async def upload_media(
 	background_tasks: BackgroundTasks,
@@ -283,6 +301,8 @@ def gallery_data(_: str = Depends(get_current_user)):
 		grouped[month].sort(key=lambda x: x["date_taken"] or x["timestamp"], reverse=True)
 
 	return grouped
+
+
 
 
 def backfill_date_taken():

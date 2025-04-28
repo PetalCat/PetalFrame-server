@@ -148,16 +148,19 @@ def add_to_album(
 @router.post("/album/{album_id}/remove")
 def remove_from_album(
 	album_id: str,
-	filename: str = Form(...),
+	filenames: list[str] = Form(...),
 	username: str = Depends(get_current_user)
 ):
 	conn = sqlite3.connect(DB_PATH)
 	c = conn.cursor()
-	c.execute("DELETE FROM album_items WHERE album_id=? AND filename=?", (album_id, filename))
+
+	for filename in filenames:
+		c.execute("DELETE FROM album_items WHERE album_id=? AND filename=?", (album_id, filename))
+
 	conn.commit()
 	conn.close()
 
-	return {"status": "removed"}
+	return {"status": "removed", "count": len(filenames)}
 
 
 @router.post("/album/{album_id}/delete")
