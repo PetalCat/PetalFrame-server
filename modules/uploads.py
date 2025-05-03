@@ -75,15 +75,25 @@ def convert_and_track(username: str, tmp_path: str, final_name: str, caption: st
 
 def determine_date_taken(path: str) -> int | None:
 	ext = os.path.splitext(path)[-1].lower()
-	taken = None
 
+	# 1. Try EXIF / ffprobe
 	if ext in [".jpg", ".jpeg", ".png", ".webp", ".heic"]:
 		taken = extract_date_taken_image(path)
+		if taken:
+			print(f"[Date] ⏱ EXIF: {path} → {taken}")
+			return taken
 	elif ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]:
 		taken = extract_date_taken_video(path)
+		if taken:
+			print(f"[Date] 🎞️ FFPROBE: {path} → {taken}")
+			return taken
 
-	if not taken:
-		taken = parse_date_from_filename(path)
+	# 2. Fallback to filename
+	taken = parse_date_from_filename(os.path.basename(path))
+	if taken:
+		print(f"[Date] 📄 Filename: {path} → {taken}")
+	else:
+		print(f"[Date] ❌ No valid timestamp found: {path}")
 
 	return taken
 
@@ -122,26 +132,33 @@ def extract_date_taken_video(path: str) -> int | None:
         print(f"[FFPROBE ERROR] {path}: {e}")
     return None
 
+
 def parse_date_from_filename(filename: str) -> int | None:
-    name = os.path.splitext(os.path.basename(filename))[0]
+	name = os.path.splitext(os.path.basename(filename))[0]
 
-    # Google Photos: 20250104_161138 or 20250104-161138
-    match = re.match(r"^(\d{8})[-_](\d{6})", name)
-    if match:
-        try:
-            return int(datetime.strptime(match.group(1) + match.group(2), "%Y%m%d%H%M%S").timestamp())
-        except ValueError:
-            return None
+	# List of (regex pattern, datetime format, label)
+	patterns = [
+		(r"(\d{8})[-_](\d{6})", "%Y%m%d%H%M%S", "Google Photos"),
+		(r"(\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2})", "%Y%m%d%H%M%S", "iCloud"),
+		(r"(\d{4})-(\d{2})-(\d{2})[-_](\d{2})[-_](\d{2})[-_](\d{2})", "%Y%m%d%H%M%S", "Screenshot"),
+		(r"(\d{14})", "%Y%m%d%H%M%S", "Long Embed"),
+		(r"(\d{4})[-_](\d{2})[-_](\d{2})", "%Y%m%d", "Fallback Date"),
+	]
 
-    # iCloud format: 2024-02-14 13.23.15
-    match = re.match(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2})", name)
-    if match:
-        try:
-            return int(datetime.strptime("".join(match.groups()), "%Y%m%d%H%M%S").timestamp())
-        except ValueError:
-            return None
+	for regex, fmt, label in patterns:
+		match = re.search(regex, name)
+		if match:
+			try:
+				date_str = "".join(match.groups())
+				timestamp = int(datetime.strptime(date_str, fmt).timestamp())
+				print(f"[Date Filename] 🏷️ Matched '{label}' → {timestamp}")
+				return timestamp
+			except ValueError:
+				continue
 
-    return None
+	return None
+
+
 
 def insert_into_album(album_id: str, filename: str):
 	if not album_id:
@@ -396,39 +413,43 @@ def get_feed(
 
 # -------------------- Date Backfill --------------------
 def backfill_date_taken():
-    from modules.database import add_date_taken_column
-    add_date_taken_column()
+	from modules.database import add_date_taken_column
+	add_date_taken_column()
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, filename FROM videos WHERE date_taken IS NULL")
-    rows = c.fetchall()
+	conn = sqlite3.connect(DB_PATH)
+	c = conn.cursor()
+	c.execute("SELECT id, filename FROM videos WHERE date_taken IS NULL")
+	rows = c.fetchall()
 
-    for video_id, filename in rows:
-        path = os.path.join(UPLOAD_DIR, filename)
-        if not os.path.exists(path):
-            continue
+	for video_id, filename in rows:
+		path = os.path.join(UPLOAD_DIR, filename)
+		if not os.path.exists(path):
+			continue
 
-        ext = os.path.splitext(filename)[-1].lower()
-        taken = None
+		ext = os.path.splitext(filename)[-1].lower()
+		taken = None
 
-        # Try EXIF or ffprobe
-        if ext in [".jpg", ".jpeg", ".png", ".webp", ".heic"]:
-            taken = extract_date_taken_image(path)
-        elif ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]:
-            taken = extract_date_taken_video(path)
+		# Try EXIF / ffprobe
+		if ext in [".jpg", ".jpeg", ".png", ".webp", ".heic"]:
+			taken = extract_date_taken_image(path)
+			if taken:
+				print(f"[Backfill] ⏱ EXIF: {filename} → {taken}")
+		elif ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]:
+			taken = extract_date_taken_video(path)
+			if taken:
+				print(f"[Backfill] 🎞️ FFPROBE: {filename} → {taken}")
 
-        # Fallback to filename pattern
-        if not taken:
-            taken = parse_date_from_filename(filename)
-            if taken:
-                print(f"[Backfill] {filename}: Parsed from filename → {taken}")
-            else:
-                print(f"[Backfill] {filename}: No date found")
+		# Fallback to filename pattern
+		if not taken:
+			taken = parse_date_from_filename(filename)
+			if taken:
+				print(f"[Backfill] 📄 Filename: {filename} → {taken}")
+			else:
+				print(f"[Backfill] ❌ No date found: {filename}")
 
-        # Save if valid
-        if taken:
-            c.execute("UPDATE videos SET date_taken=? WHERE id=?", (taken, video_id))
+		# Save if valid
+		if taken:
+			c.execute("UPDATE videos SET date_taken=? WHERE id=?", (taken, video_id))
 
-    conn.commit()
-    conn.close()
+	conn.commit()
+	conn.close()
