@@ -9,6 +9,7 @@ UPLOAD_DIR = os.path.join(BASE_DATA_DIR, "uploads")
 AVATAR_DIR = os.path.join(BASE_DATA_DIR, "avatars")  # if you use one
 ROOMS_DIR = os.path.join(BASE_DATA_DIR, "user_rooms")
 DB_PATH = os.path.join(BASE_DATA_DIR, "app.db")
+QUEUE_DB_PATH = os.path.join(BASE_DATA_DIR, "upload_queue.db")
 
 CONFIG_PATH = os.path.join(ROOT_DIR, "config.json")
 ALGORITHM = "HS256"

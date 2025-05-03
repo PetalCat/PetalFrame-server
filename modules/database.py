@@ -1,7 +1,7 @@
 import sqlite3
 import time
 from uuid import uuid4
-from modules.config import DB_PATH
+from modules.config import DB_PATH, QUEUE_DB_PATH
 
 def init_db():
 	conn = sqlite3.connect(DB_PATH)
@@ -50,6 +50,101 @@ def init_db():
 			FOREIGN KEY (filename) REFERENCES videos(filename)
 		)
 	""")
+
+	conn.commit()
+	conn.close()
+
+def init_upload_queue_db():
+	conn = sqlite3.connect(QUEUE_DB_PATH)
+	c = conn.cursor()
+	c.execute("""
+		CREATE TABLE IF NOT EXISTS upload_queue (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL,
+			original_path TEXT NOT NULL,
+			final_name TEXT NOT NULL,
+			caption TEXT,
+			is_video INTEGER NOT NULL,
+			created_at INTEGER,
+			status TEXT DEFAULT 'pending',
+			retry_count INTEGER DEFAULT 0
+		)
+	""")
+	conn.commit()
+	conn.close()
+
+def column_exists(conn, table: str, column: str) -> bool:
+	c = conn.cursor()
+	c.execute(f"PRAGMA table_info({table})")
+	return any(row[1] == column for row in c.fetchall())
+
+def table_exists(conn, table: str) -> bool:
+	c = conn.cursor()
+	c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+	return c.fetchone() is not None
+
+def upgrade_main_db():
+	conn = sqlite3.connect(DB_PATH)
+
+	# Check and add missing column
+	if not column_exists(conn, "videos", "date_taken"):
+		print("[DB Upgrade] Adding date_taken column to videos...")
+		conn.execute("ALTER TABLE videos ADD COLUMN date_taken INTEGER")
+
+	# Albums
+	if not table_exists(conn, "albums"):
+		print("[DB Upgrade] Creating albums table...")
+		conn.execute("""
+			CREATE TABLE albums (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				description TEXT,
+				cover_filename TEXT,
+				creator_username TEXT NOT NULL
+			)
+		""")
+
+	if not table_exists(conn, "album_items"):
+		print("[DB Upgrade] Creating album_items table...")
+		conn.execute("""
+			CREATE TABLE album_items (
+				album_id TEXT,
+				filename TEXT,
+				PRIMARY KEY (album_id, filename),
+				FOREIGN KEY (album_id) REFERENCES albums(id),
+				FOREIGN KEY (filename) REFERENCES videos(filename)
+			)
+		""")
+
+	conn.commit()
+	conn.close()
+
+
+def upgrade_queue_db():
+	conn = sqlite3.connect(QUEUE_DB_PATH)
+
+	if not table_exists(conn, "upload_queue"):
+		print("[DB Upgrade] Creating upload_queue table...")
+		conn.execute("""
+			CREATE TABLE upload_queue (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				username TEXT NOT NULL,
+				original_path TEXT NOT NULL,
+				final_name TEXT NOT NULL,
+				caption TEXT,
+				is_video INTEGER NOT NULL,
+				created_at INTEGER
+			)
+		""")
+
+	else:
+		if not column_exists(conn, "upload_queue", "status"):
+			print("[DB Upgrade] Adding status column to upload_queue...")
+			conn.execute("ALTER TABLE upload_queue ADD COLUMN status TEXT DEFAULT 'pending'")
+
+		if not column_exists(conn, "upload_queue", "retry_count"):
+			print("[DB Upgrade] Adding retry_count column to upload_queue...")
+			conn.execute("ALTER TABLE upload_queue ADD COLUMN retry_count INTEGER DEFAULT 0")
 
 	conn.commit()
 	conn.close()

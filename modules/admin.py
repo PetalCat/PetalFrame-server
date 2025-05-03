@@ -6,6 +6,8 @@ from modules.database import (
 from modules.config import get_config, save_config
 from modules.auth import decode_token, get_user
 from modules.uploads import backfill_missing_previews, backfill_date_taken  # ✅ new
+from modules.queue import QUEUE_DB_PATH
+import sqlite3
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -16,6 +18,16 @@ def require_admin(token: str = Depends(oauth2_scheme)):
 	if not user or not user["is_admin"]:
 		raise HTTPException(status_code=403, detail="Admin only")
 	return username
+
+@router.get("/admin/queue")
+def get_queue_status():
+	conn = sqlite3.connect(QUEUE_DB_PATH)
+	c = conn.cursor()
+	c.execute("SELECT id, username, final_name, status, retry_count FROM upload_queue")
+	rows = c.fetchall()
+	conn.close()
+	return [dict(zip(["id", "username", "final_name", "status", "retry_count"], r)) for r in rows]
+
 
 @router.post("/admin/backfill_previews")
 def run_preview_backfill(_: str = Depends(require_admin)):

@@ -11,7 +11,7 @@ from PIL.ExifTags import TAGS
 from modules.database import (
     resolve_username_caseless, track_upload, list_user_uploads, user_exists, add_date_taken_column
 )
-from modules.config import UPLOAD_DIR, DB_PATH
+from modules.config import UPLOAD_DIR, DB_PATH, QUEUE_DB_PATH
 from modules.auth import decode_token
 
 # -------------------- Auth --------------------
@@ -42,8 +42,10 @@ def generate_preview(input_path: str, output_path: str, is_video: bool):
             "-i", input_path,
             "-vf", "scale=320:-1",
             "-frames:v", "1",
+            "-update", "1",
             output_path
         ], check=True)
+
 
 def convert_to_mp4(input_path: str, output_path: str):
     subprocess.run([
@@ -151,6 +153,31 @@ def backfill_missing_previews():
 # -------------------- Uploads --------------------
 router = APIRouter()
 
+
+def enqueue_upload(username: str, tmp_path: str, final_name: str, caption: str, is_video: bool):
+    conn = sqlite3.connect(QUEUE_DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+		CREATE TABLE IF NOT EXISTS upload_queue (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL,
+			original_path TEXT NOT NULL,
+			final_name TEXT NOT NULL,
+			caption TEXT,
+			is_video INTEGER NOT NULL,
+			created_at INTEGER
+		)
+	""")
+    c.execute("""
+		INSERT INTO upload_queue (
+			username, original_path, final_name, caption, is_video, created_at
+		) VALUES (?, ?, ?, ?, ?, ?)
+	""", (username, tmp_path, final_name, caption, int(is_video), int(datetime.now().timestamp())))
+    conn.commit()
+    conn.close()
+
+
+
 @router.post("/upload")
 async def upload_media(
     background_tasks: BackgroundTasks,
@@ -177,7 +204,7 @@ async def upload_media(
         final_path = os.path.join(UPLOAD_DIR, final_name)
 
         if is_convert:
-            background_tasks.add_task(convert_and_track, username, tmp_path, final_name, caption.strip())
+            enqueue_upload(username, tmp_path, final_name, caption.strip(), is_video=True)
         else:
             is_video = content_type.startswith("video/")
             final_path = os.path.join(UPLOAD_DIR, final_name)
