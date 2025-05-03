@@ -3,7 +3,7 @@ from fastapi import UploadFile, File, Form, HTTPException, Depends, APIRouter, B
 from fastapi.security import OAuth2PasswordBearer
 import os, shutil, subprocess, tempfile, sqlite3
 from uuid import uuid4
-
+from modules.database import resolve_username_caseless
 from modules.config import UPLOAD_DIR, DB_PATH
 from modules.database import track_upload, list_user_uploads, user_exists, add_date_taken_column
 from modules.auth import decode_token
@@ -302,6 +302,34 @@ def gallery_data(_: str = Depends(get_current_user)):
 
 	return grouped
 
+@router.get("/gallery/user/{username}")
+def get_user_gallery(username: str):
+	real_user = resolve_username_caseless(username)
+	if not real_user:
+		raise HTTPException(status_code=404, detail="User not found")
+
+	conn = sqlite3.connect(DB_PATH)
+	c = conn.cursor()
+	c.execute("""
+		SELECT filename, caption, timestamp, date_taken
+		FROM videos
+		WHERE username = ?
+	""", (real_user,))
+	uploads = c.fetchall()
+	conn.close()
+
+	grouped = defaultdict(list)
+	for filename, caption, timestamp, date_taken in uploads:
+		sort_time = date_taken or timestamp
+		month = datetime.utcfromtimestamp(sort_time).strftime("%B %Y")
+		grouped[month].append({
+			"filename": filename,
+			"caption": caption,
+			"timestamp": timestamp,
+			"date_taken": date_taken,
+		})
+
+	return grouped
 
 
 
