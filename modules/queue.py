@@ -1,18 +1,32 @@
 import os, shutil, sqlite3, time, traceback
 from datetime import datetime
-from modules.uploads import convert_to_mp4, generate_preview
+from modules.uploads import convert_to_mp4, generate_preview, insert_into_album
 from modules.database import track_upload
+from modules.auth import decode_token
 from modules.config import UPLOAD_DIR, QUEUE_DB_PATH
 
 POLL_INTERVAL = 5  # seconds
+
+def convert_and_track(username: str, tmp_path: str, final_name: str, caption: str, album_id: str = ""):
+	output_path = os.path.join(UPLOAD_DIR, final_name)
+	preview_name = f"preview_{final_name}"
+	preview_path = os.path.join(UPLOAD_DIR, preview_name)
+	try:
+		convert_to_mp4(tmp_path, output_path)
+		generate_preview(output_path, preview_path, is_video=True)
+		track_upload(username, final_name, caption)
+		insert_into_album(album_id, final_name)
+	except Exception as e:
+		print(f"[FFMPEG ERROR] {final_name}: {e}")
+	finally:
+		os.unlink(tmp_path)
 
 def process_next():
 	conn = sqlite3.connect(QUEUE_DB_PATH)
 	c = conn.cursor()
 
-	# Find one pending item
 	c.execute("""
-		SELECT id, username, original_path, final_name, caption, is_video, retry_count
+		SELECT id, username, original_path, final_name, caption, is_video, retry_count, album_id
 		FROM upload_queue
 		WHERE status = 'pending'
 		ORDER BY created_at ASC
@@ -23,18 +37,16 @@ def process_next():
 	if not row:
 		conn.close()
 		time.sleep(1)
-		return False  # nothing to process
+		return False
 
-	id, username, path, final_name, caption, is_video, retry_count = row
+	id, username, path, final_name, caption, is_video, retry_count, album_id = row
 
-	# Mark as in progress
 	c.execute("UPDATE upload_queue SET status = 'processing' WHERE id = ?", (id,))
 	conn.commit()
 	conn.close()
 
 	try:
-		convert_and_track(username, path, final_name, caption)
-		# ✅ Success
+		convert_and_track(username, path, final_name, caption, album_id)
 		conn = sqlite3.connect(QUEUE_DB_PATH)
 		c = conn.cursor()
 		c.execute("DELETE FROM upload_queue WHERE id = ?", (id,))
@@ -55,10 +67,8 @@ def process_next():
 	return True
 
 
+# FastAPI routes
 from fastapi import APIRouter, Depends, Form, HTTPException
-import sqlite3, os
-from modules.config import QUEUE_DB_PATH
-from modules.auth import decode_token
 from fastapi.security import OAuth2PasswordBearer
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -70,7 +80,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 		raise HTTPException(status_code=401, detail="Invalid token")
 	return username
 
-# Get current user's queue status
 @router.get("/queue/status")
 def queue_status(username: str = Depends(get_current_user)):
 	conn = sqlite3.connect(QUEUE_DB_PATH)
@@ -94,7 +103,6 @@ def queue_status(username: str = Depends(get_current_user)):
 		} for r in rows
 	]
 
-# Cancel an upload
 @router.post("/queue/cancel")
 def cancel_upload(id: int = Form(...), username: str = Depends(get_current_user)):
 	conn = sqlite3.connect(QUEUE_DB_PATH)
@@ -114,7 +122,6 @@ def cancel_upload(id: int = Form(...), username: str = Depends(get_current_user)
 		os.remove(row[2])
 	return {"status": "cancelled"}
 
-# Retry a failed upload
 @router.post("/queue/retry")
 def retry_upload(id: int = Form(...), username: str = Depends(get_current_user)):
 	conn = sqlite3.connect(QUEUE_DB_PATH)
@@ -132,7 +139,6 @@ def retry_upload(id: int = Form(...), username: str = Depends(get_current_user))
 	conn.close()
 	return {"status": "retried"}
 
-# Get global queue stats (for UI)
 @router.get("/queue/pending")
 def queue_pending():
 	conn = sqlite3.connect(QUEUE_DB_PATH)
@@ -142,7 +148,6 @@ def queue_pending():
 	conn.close()
 	return {"pending": count}
 
-# Admin/all-users queue view
 @router.get("/queue/all")
 def queue_all():
 	conn = sqlite3.connect(QUEUE_DB_PATH)
@@ -164,7 +169,6 @@ def queue_all():
 			"created_at": r[5],
 		} for r in rows
 	]
-
 
 def run_loop():
 	print("[Queue] Started processing loop")

@@ -58,18 +58,20 @@ def init_upload_queue_db():
 	conn = sqlite3.connect(QUEUE_DB_PATH)
 	c = conn.cursor()
 	c.execute("""
-		CREATE TABLE IF NOT EXISTS upload_queue (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT NOT NULL,
-			original_path TEXT NOT NULL,
-			final_name TEXT NOT NULL,
-			caption TEXT,
-			is_video INTEGER NOT NULL,
-			created_at INTEGER,
-			status TEXT DEFAULT 'pending',
-			retry_count INTEGER DEFAULT 0
-		)
+	CREATE TABLE IF NOT EXISTS upload_queue (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT NOT NULL,
+		original_path TEXT NOT NULL,
+		final_name TEXT NOT NULL,
+		caption TEXT,
+		is_video INTEGER NOT NULL,
+		created_at INTEGER,
+		status TEXT DEFAULT 'pending',
+		retry_count INTEGER DEFAULT 0,
+		album_id TEXT
+	)
 	""")
+
 	conn.commit()
 	conn.close()
 
@@ -119,7 +121,6 @@ def upgrade_main_db():
 	conn.commit()
 	conn.close()
 
-
 def upgrade_queue_db():
 	conn = sqlite3.connect(QUEUE_DB_PATH)
 
@@ -133,10 +134,12 @@ def upgrade_queue_db():
 				final_name TEXT NOT NULL,
 				caption TEXT,
 				is_video INTEGER NOT NULL,
-				created_at INTEGER
+				created_at INTEGER,
+				status TEXT DEFAULT 'pending',
+				retry_count INTEGER DEFAULT 0,
+				album_id TEXT
 			)
 		""")
-
 	else:
 		if not column_exists(conn, "upload_queue", "status"):
 			print("[DB Upgrade] Adding status column to upload_queue...")
@@ -145,6 +148,10 @@ def upgrade_queue_db():
 		if not column_exists(conn, "upload_queue", "retry_count"):
 			print("[DB Upgrade] Adding retry_count column to upload_queue...")
 			conn.execute("ALTER TABLE upload_queue ADD COLUMN retry_count INTEGER DEFAULT 0")
+
+		if not column_exists(conn, "upload_queue", "album_id"):
+			print("[DB Upgrade] Adding album_id column to upload_queue...")
+			conn.execute("ALTER TABLE upload_queue ADD COLUMN album_id TEXT")
 
 	conn.commit()
 	conn.close()

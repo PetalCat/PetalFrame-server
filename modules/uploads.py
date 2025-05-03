@@ -125,6 +125,22 @@ def parse_date_from_filename(filename: str) -> int | None:
 
     return None
 
+def insert_into_album(album_id: str, filename: str):
+	if not album_id:
+		return
+	try:
+		conn = sqlite3.connect(DB_PATH)
+		c = conn.cursor()
+		c.execute(
+			"INSERT OR IGNORE INTO album_items (album_id, filename) VALUES (?, ?)",
+			(album_id, filename)
+		)
+		conn.commit()
+		conn.close()
+	except Exception as e:
+		print(f"[Album Add] Failed to add {filename} to album {album_id}: {e}")
+
+
 
 def backfill_missing_previews():
 	for filename in os.listdir(UPLOAD_DIR):
@@ -153,29 +169,16 @@ def backfill_missing_previews():
 # -------------------- Uploads --------------------
 router = APIRouter()
 
-
-def enqueue_upload(username: str, tmp_path: str, final_name: str, caption: str, is_video: bool):
-    conn = sqlite3.connect(QUEUE_DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-		CREATE TABLE IF NOT EXISTS upload_queue (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			username TEXT NOT NULL,
-			original_path TEXT NOT NULL,
-			final_name TEXT NOT NULL,
-			caption TEXT,
-			is_video INTEGER NOT NULL,
-			created_at INTEGER
-		)
-	""")
-    c.execute("""
-		INSERT INTO upload_queue (
-			username, original_path, final_name, caption, is_video, created_at
-		) VALUES (?, ?, ?, ?, ?, ?)
-	""", (username, tmp_path, final_name, caption, int(is_video), int(datetime.now().timestamp())))
-    conn.commit()
-    conn.close()
-
+def enqueue_upload(username: str, tmp_path: str, final_name: str, caption: str, is_video: bool, album_id: str = ""):
+	conn = sqlite3.connect(QUEUE_DB_PATH)
+	c = conn.cursor()
+	c.execute("""
+	INSERT INTO upload_queue (
+		username, original_path, final_name, caption, is_video, created_at, album_id
+	) VALUES (?, ?, ?, ?, ?, ?, ?)
+	""", (username, tmp_path, final_name, caption, int(is_video), int(datetime.now().timestamp()), album_id))
+	conn.commit()
+	conn.close()
 
 
 @router.post("/upload")
@@ -183,6 +186,7 @@ async def upload_media(
     background_tasks: BackgroundTasks,
     username: str = Depends(get_current_user),
     caption: str = Form(""),
+    album_id: str = Form(""),
     files: List[UploadFile] = File(...)
 ):
     uploaded = 0
@@ -202,18 +206,18 @@ async def upload_media(
         final_ext = ".mp4" if is_convert else ext
         final_name = f"{file_id}{final_ext}"
         final_path = os.path.join(UPLOAD_DIR, final_name)
-
         if is_convert:
-            enqueue_upload(username, tmp_path, final_name, caption.strip(), is_video=True)
+            enqueue_upload(username, tmp_path, final_name, caption.strip(), is_video=True, album_id=album_id)
         else:
             is_video = content_type.startswith("video/")
-            final_path = os.path.join(UPLOAD_DIR, final_name)
             shutil.move(tmp_path, final_path)
 
             preview_name = f"preview_{final_name}"
             preview_path = os.path.join(UPLOAD_DIR, preview_name)
             generate_preview(final_path, preview_path, is_video)
             track_upload(username, final_name, caption.strip())
+            insert_into_album(album_id, final_name)
+
 
         uploaded += 1
 
