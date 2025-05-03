@@ -13,6 +13,10 @@ from modules.database import (
 )
 from modules.config import UPLOAD_DIR, DB_PATH, QUEUE_DB_PATH
 from modules.auth import decode_token
+import os
+from datetime import datetime
+
+
 
 # -------------------- Auth --------------------
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -68,6 +72,20 @@ def convert_and_track(username: str, tmp_path: str, final_name: str, caption: st
         print(f"[FFMPEG ERROR] {final_name}: {e}")
     finally:
         os.unlink(tmp_path)
+
+def determine_date_taken(path: str) -> int | None:
+	ext = os.path.splitext(path)[-1].lower()
+	taken = None
+
+	if ext in [".jpg", ".jpeg", ".png", ".webp", ".heic"]:
+		taken = extract_date_taken_image(path)
+	elif ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]:
+		taken = extract_date_taken_video(path)
+
+	if not taken:
+		taken = parse_date_from_filename(path)
+
+	return taken
 
 def extract_date_taken_image(path: str) -> int | None:
     try:
@@ -215,7 +233,9 @@ async def upload_media(
             preview_name = f"preview_{final_name}"
             preview_path = os.path.join(UPLOAD_DIR, preview_name)
             generate_preview(final_path, preview_path, is_video)
-            track_upload(username, final_name, caption.strip())
+
+            taken = determine_date_taken(final_path)
+            track_upload(username, final_name, caption.strip(), date_taken=taken)
             insert_into_album(album_id, final_name)
 
 
