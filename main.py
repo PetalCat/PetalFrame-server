@@ -39,6 +39,7 @@ app.add_middleware(
 		"https://petalcat.dev",
         "https://frame.petalcat.dev",
 		"https://base.petalcat.dev",
+		"https://sframe.petalcat.dev",
 		"https://*.petalcat.dev",
 	],
 	allow_credentials=True,
