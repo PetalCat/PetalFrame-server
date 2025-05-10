@@ -15,6 +15,7 @@ from modules.config import UPLOAD_DIR, DB_PATH, QUEUE_DB_PATH
 from modules.auth import decode_token
 import os
 from datetime import datetime
+from fastapi.responses import FileResponse
 
 
 
@@ -453,3 +454,14 @@ def backfill_date_taken():
 
 	conn.commit()
 	conn.close()
+
+
+@router.get("/media/{filename}")
+def serve_media(
+	filename: str,
+	username: str = Depends(get_current_user)
+):
+	file_path = os.path.join(UPLOAD_DIR, filename)
+	if not os.path.isfile(file_path):
+		raise HTTPException(status_code=404, detail="Media not found")
+	return FileResponse(file_path)
