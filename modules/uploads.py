@@ -176,31 +176,107 @@ def insert_into_album(album_id: str, filename: str):
 	except Exception as e:
 		print(f"[Album Add] Failed to add {filename} to album {album_id}: {e}")
 
+def backfill_normalize_uploads():
+	import os
+	import sqlite3
+	from modules.config import DB_PATH, UPLOAD_DIR
+
+	conn = sqlite3.connect(DB_PATH)
+	c = conn.cursor()
+
+	c.execute("SELECT id, filename FROM videos")
+	rows = c.fetchall()
+
+	for video_id, filename in rows:
+		original_path = os.path.join(UPLOAD_DIR, filename)
+		if not os.path.isfile(original_path):
+			print(f"[Normalize] ❌ File missing: {filename}")
+			continue
+
+		base, ext = os.path.splitext(filename)
+		ext = ext.lower()
+		updated = False
+
+		# Convert non-mp4 videos to mp4
+		if ext in [".mov", ".webm", ".avi", ".mkv", ".3gp"]:
+			new_filename = f"{base}.mp4"
+			new_path = os.path.join(UPLOAD_DIR, new_filename)
+			print(f"[Normalize] 🎞 Converting {filename} → {new_filename}")
+			try:
+				convert_to_mp4(original_path, new_path)
+				os.remove(original_path)
+				filename = new_filename
+				updated = True
+			except Exception as e:
+				print(f"[Normalize] ❌ Video conversion failed: {e}")
+				continue
+
+		# Fix preview extension to .jpg
+		preview_base = os.path.join(UPLOAD_DIR, f"preview_{os.path.splitext(filename)[0]}")
+		final_preview = f"{preview_base}.jpg"
+
+		for ext_try in [".png", ".jpeg", ".webp"]:
+			try_path = f"{preview_base}{ext_try}"
+			if os.path.exists(try_path):
+				print(f"[Normalize] 🖼 Renaming {try_path} → {final_preview}")
+				os.rename(try_path, final_preview)
+				break
+
+		if not os.path.exists(final_preview):
+			is_video = filename.lower().endswith(".mp4")
+			try:
+				generate_preview(os.path.join(UPLOAD_DIR, filename), final_preview, is_video=is_video)
+				print(f"[Normalize] 🔁 Regenerated preview for {filename}")
+			except Exception as e:
+				print(f"[Normalize] ❌ Preview failed: {e}")
+
+		if updated:
+			print(f"[Normalize] 📝 Updating DB: {video_id} → {filename}")
+			c.execute("UPDATE videos SET filename = ? WHERE id = ?", (filename, video_id))
+
+	conn.commit()
+	conn.close()
+	print("[Normalize] ✅ All done.")
 
 
 def backfill_missing_previews():
 	for filename in os.listdir(UPLOAD_DIR):
-		if filename.startswith("preview_"):
-			continue  # Already has preview
-
-		full_path = os.path.join(UPLOAD_DIR, filename)
-		if not os.path.isfile(full_path):
+		if not os.path.isfile(os.path.join(UPLOAD_DIR, filename)):
 			continue
 
-		preview_name = f"preview_{filename}"
+		# Skip files that are already previews
+		if filename.startswith("preview_"):
+			# Fix .png preview files → .jpg
+			if filename.endswith(".png"):
+				old_path = os.path.join(UPLOAD_DIR, filename)
+				new_name = os.path.splitext(filename)[0] + ".jpg"
+				new_path = os.path.join(UPLOAD_DIR, new_name)
+
+				if not os.path.exists(new_path):
+					os.rename(old_path, new_path)
+					print(f"[Backfill] 🔁 Renamed preview PNG → JPG: {filename} → {new_name}")
+				else:
+					os.remove(old_path)
+					print(f"[Backfill] 🗑️ Removed duplicate PNG preview: {filename}")
+			continue
+
+		# For original media files (not previews)
+		full_path = os.path.join(UPLOAD_DIR, filename)
+		ext = os.path.splitext(filename)[-1].lower()
+		is_video = ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]
+
+		base_name = os.path.splitext(filename)[0]
+		preview_name = f"preview_{base_name}.jpg"
 		preview_path = os.path.join(UPLOAD_DIR, preview_name)
 
 		if os.path.exists(preview_path):
-			continue  # Already generated
+			continue  # preview already exists
 
-		ext = os.path.splitext(filename)[-1].lower()
-		is_video = ext in [".mp4", ".webm", ".mov", ".avi", ".mkv", ".3gp"]
 		try:
 			generate_preview(full_path, preview_path, is_video)
-			print(f"[Backfill] Generated preview for {filename}")
+			print(f"[Backfill] ✅ Generated preview for {filename}")
 		except Exception as e:
-			print(f"[Backfill] Failed preview for {filename}: {e}")
-
+			print(f"[Backfill] ❌ Failed preview for {filename}: {e}")
 
 # -------------------- Uploads --------------------
 router = APIRouter()
@@ -242,19 +318,22 @@ async def upload_media(
         final_ext = ".mp4" if is_convert else ext
         final_name = f"{file_id}{final_ext}"
         final_path = os.path.join(UPLOAD_DIR, final_name)
+
+        # Always use .jpg for preview
+        preview_name = f"preview_{os.path.splitext(final_name)[0]}.jpg"
+        preview_path = os.path.join(UPLOAD_DIR, preview_name)
+
         if is_convert:
             enqueue_upload(username, tmp_path, final_name, caption.strip(), is_video=True, album_id=album_id)
         else:
             is_video = content_type.startswith("video/")
             shutil.move(tmp_path, final_path)
 
-            preview_name = f"preview_{final_name}"
-            preview_path = os.path.join(UPLOAD_DIR, preview_name)
             generate_preview(final_path, preview_path, is_video)
-
             taken = determine_date_taken(final_path)
             track_upload(username, final_name, caption.strip(), date_taken=taken)
             insert_into_album(album_id, final_name)
+
 
 
         uploaded += 1
@@ -457,11 +536,13 @@ def backfill_date_taken():
 
 
 @router.get("/media/{filename}")
-def serve_media(
-	filename: str,
-	username: str = Depends(get_current_user)
-):
+def serve_media(filename: str, username: str = Depends(get_current_user)):
 	file_path = os.path.join(UPLOAD_DIR, filename)
+	print(f"[ServeMedia] Checking: {file_path}")
+	
 	if not os.path.isfile(file_path):
+		print(f"[ServeMedia] ❌ Not found: {file_path}")
 		raise HTTPException(status_code=404, detail="Media not found")
+
+	print(f"[ServeMedia] ✅ Found: {file_path}")
 	return FileResponse(file_path)
